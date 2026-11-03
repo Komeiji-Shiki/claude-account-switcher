@@ -96,13 +96,13 @@ func printStatus(s *switcher) {
 	s.check(ctx)
 	snap := s.snapshot()
 	if len(snap.Accounts) == 0 {
-		fmt.Println("no accounts yet, sign in to Claude")
+		fmt.Println(snap.Language.text("no accounts yet, sign in to Claude"))
 	}
 	for _, a := range snap.Accounts {
 		mark := " "
 		if a.UUID == snap.Active {
 			mark = "*"
 		}
-		fmt.Printf("%s %s  %s\n", mark, a.label(), usageText(a, snap.Threshold, time.Now()))
+		fmt.Printf("%s %s  %s\n", mark, a.label(), snap.Language.usageText(a, snap.Threshold, time.Now()))
 	}
 }

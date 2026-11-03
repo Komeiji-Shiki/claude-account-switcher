@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"runtime"
 	"time"
@@ -25,6 +24,7 @@ var (
 	// The state of the one resume dialog that can be open at a time.
 	resumeShown, resumeLeft int
 	resumeKeep              []bool
+	resumeLanguage          language
 	// What the one number dialog that can be open at a time ended with.
 	numberText string
 )
@@ -57,18 +57,19 @@ const (
 // nativeResume asks which of the chats titled titles should go on and
 // returns one answer per title. After wait without an answer, or if the
 // dialog cannot open, all of them go on. Chats beyond the dialog's list go on.
-func nativeResume(titles []string, wait time.Duration) []bool {
+func nativeResume(l language, titles []string, wait time.Duration) []bool {
 	done := make(chan []bool)
 	go func() {
 		// The dialog's window belongs to this thread; Go ends the thread
 		// with the goroutine because it stays locked.
 		runtime.LockOSThread()
-		done <- showResumeDialog(titles, wait)
+		done <- showResumeDialog(l, titles, wait)
 	}()
 	return <-done
 }
 
-func showResumeDialog(titles []string, wait time.Duration) []bool {
+func showResumeDialog(l language, titles []string, wait time.Duration) []bool {
+	resumeLanguage = l
 	resumeKeep = make([]bool, len(titles))
 	for i := range resumeKeep {
 		resumeKeep[i] = true
@@ -90,19 +91,19 @@ func showResumeDialog(titles []string, wait time.Duration) []bool {
 	buttonsY := boxesY + listed*boxHeight + 8
 	height := buttonsY + btnH + margin
 	t.header(wsPopup|wsCaption|wsSysMenu|dsSetFont|dsModalFrame|dsSetForeground|dsCenter, wsExTopmost,
-		2+listed+1, width, height, "Continue chats?", 9, "Segoe UI")
+		2+listed+1, width, height, l.text("Continue chats?"), 9, "Segoe UI")
 	t.item(wsChild|wsVisible|ssNoPrefix, margin, margin, width-2*margin, textHeight, 0xFFFF, classStatic,
-		"These chats were working when Claude closed for the switch. Claude continues the checked ones when it starts again.")
+		l.text("These chats were working when Claude closed for the switch. Claude continues the checked ones when it starts again."))
 	for i := range resumeShown {
 		t.item(wsChild|wsVisible|wsTabStop|bsAutoCheckBox, margin, boxesY+i*boxHeight, width-2*margin, boxHeight-2,
 			uint16(firstBox+i), classButton, menuText(titles[i]))
 	}
 	if len(titles) > maxBoxes {
 		t.item(wsChild|wsVisible|ssNoPrefix, margin, boxesY+resumeShown*boxHeight+2, width-2*margin, boxHeight-2, 0xFFFF, classStatic,
-			fmt.Sprintf("and %d more, which continue too", len(titles)-maxBoxes))
+			l.text("and %d more, which continue too", len(titles)-maxBoxes))
 	}
 	t.item(wsChild|wsVisible|wsTabStop|bsDefPushButton, width-margin-2*btnW-4, buttonsY, btnW, btnH, idOK, classButton, continueLabel())
-	t.item(wsChild|wsVisible|wsTabStop, width-margin-btnW, buttonsY, btnW, btnH, idCancel, classButton, "Don't continue")
+	t.item(wsChild|wsVisible|wsTabStop, width-margin-btnW, buttonsY, btnW, btnH, idCancel, classButton, l.text("Don't continue"))
 
 	var inst windows.Handle
 	_ = windows.GetModuleHandleEx(0, nil, &inst)
@@ -169,21 +170,21 @@ func endResumeDialog(hwnd, id uintptr) {
 // nativeAskNumber asks for a number under prompt, with value filled in, and
 // returns what was typed. It is false when the dialog was cancelled or could
 // not open.
-func nativeAskNumber(title, prompt, value string) (string, bool) {
+func nativeAskNumber(l language, title, prompt, value string) (string, bool) {
 	var text string
 	var ok bool
 	done := make(chan struct{})
 	go func() {
 		// As in nativeResume, the dialog's window belongs to this thread.
 		runtime.LockOSThread()
-		text, ok = showNumberDialog(title, prompt, value)
+		text, ok = showNumberDialog(l, title, prompt, value)
 		close(done)
 	}()
 	<-done
 	return text, ok
 }
 
-func showNumberDialog(title, prompt, value string) (string, bool) {
+func showNumberDialog(l language, title, prompt, value string) (string, bool) {
 	const (
 		width, margin, textHeight, btnW = 230, 7, 26, 50
 		editW, rowH, btnH               = 32, 12, 14
@@ -198,8 +199,8 @@ func showNumberDialog(title, prompt, value string) (string, bool) {
 	// The first control with a tab stop gets the focus, with its text selected.
 	t.item(wsChild|wsVisible|wsTabStop|wsBorder|esNumber|esAutoHScroll, margin, editY, editW, rowH, idNumber, classEdit, value)
 	t.item(wsChild|wsVisible|ssNoPrefix, margin+editW+3, editY+2, 10, rowH-2, 0xFFFF, classStatic, "%")
-	t.item(wsChild|wsVisible|wsTabStop|bsDefPushButton, width-margin-2*btnW-4, buttonsY, btnW, btnH, idOK, classButton, "Set")
-	t.item(wsChild|wsVisible|wsTabStop, width-margin-btnW, buttonsY, btnW, btnH, idCancel, classButton, "Cancel")
+	t.item(wsChild|wsVisible|wsTabStop|bsDefPushButton, width-margin-2*btnW-4, buttonsY, btnW, btnH, idOK, classButton, l.text("Set"))
+	t.item(wsChild|wsVisible|wsTabStop, width-margin-btnW, buttonsY, btnW, btnH, idCancel, classButton, l.text("Cancel"))
 
 	var inst windows.Handle
 	_ = windows.GetModuleHandleEx(0, nil, &inst)
@@ -237,9 +238,9 @@ func numberDialog(hwnd, msg, wparam, _ uintptr) uintptr {
 
 func continueLabel() string {
 	if resumeLeft > 0 {
-		return fmt.Sprintf("Continue (%d)", resumeLeft)
+		return resumeLanguage.text("Continue (%d)", resumeLeft)
 	}
-	return "Continue"
+	return resumeLanguage.text("Continue")
 }
 
 func setDialogText(hwnd, id uintptr, s string) {

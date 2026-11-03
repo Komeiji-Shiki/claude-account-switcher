@@ -33,7 +33,7 @@ func relaunchOutsideDesktop(string) bool { return false }
 func launch(string) error                { return errUnsupported }
 func askToQuitOld()                      {}
 
-func nativeResume(titles []string, _ time.Duration) []bool {
+func nativeResume(_ language, titles []string, _ time.Duration) []bool {
 	keep := make([]bool, len(titles))
 	for i := range keep {
 		keep[i] = true
@@ -41,6 +41,6 @@ func nativeResume(titles []string, _ time.Duration) []bool {
 	return keep
 }
 
-func nativeAskNumber(string, string, string) (string, bool) { return "", false }
+func nativeAskNumber(language, string, string, string) (string, bool) { return "", false }
 
 func showWebDialog(dialogWindow, string) (json.RawMessage, error) { return nil, errUnsupported }

@@ -38,6 +38,7 @@ func (a *Account) label() string {
 // State is what the switcher remembers between runs.
 type State struct {
 	Accounts   []*Account `json:"accounts"`
+	Language   language   `json:"language,omitempty"`
 	AutoSwitch bool       `json:"autoSwitch"`
 	Threshold  float64    `json:"threshold"`
 	// SpendWeekly moves to an account whose week is about to reset mostly unused.
@@ -105,7 +106,7 @@ type switcher struct {
 	st       State
 	active   string
 	busy     atomic.Bool
-	status   string
+	status   localizedMessage
 	addingAt time.Time
 	onChange func()
 	// After a 429, an account is not asked again before its backoff ends.
@@ -122,6 +123,7 @@ func newSwitcher(dir string) *switcher {
 	if s.st.Threshold <= 0 {
 		s.st.Threshold = defaultThreshold
 	}
+	s.st.Language = s.st.Language.normalized()
 	return s
 }
 
@@ -141,12 +143,13 @@ func (s *switcher) saveState() {
 	}
 }
 
-func (s *switcher) setStatus(msg string) {
+func (s *switcher) setStatus(source string, args ...any) {
+	msg := message(source, args...)
 	s.mu.Lock()
 	s.status = msg
 	s.mu.Unlock()
-	if msg != "" {
-		log.Print(msg)
+	if source != "" {
+		log.Print(msg.render(english))
 	}
 	s.onChange()
 }
@@ -275,7 +278,7 @@ func (s *switcher) check(ctx context.Context) (string, func() error) {
 	if added && adding {
 		s.addingAt = time.Time{}
 	} else if adding && time.Since(s.addingAt) > 15*time.Minute {
-		s.addingAt, s.status = time.Time{}, ""
+		s.addingAt, s.status = time.Time{}, localizedMessage{}
 	}
 	s.saveState()
 	target, cause := s.autoTarget(desktopRunning(), lastChat, time.Now())
@@ -353,12 +356,12 @@ func (s *switcher) run(what string, f func() error) {
 	err := f()
 	s.busy.Store(false)
 	if err != nil {
-		s.setStatus(fmt.Sprintf("%s failed: %v", what, err))
+		s.setStatus(what+" failed: %v", err)
 		return
 	}
 	s.mu.Lock()
 	if s.addingAt.IsZero() {
-		s.status = ""
+		s.status = localizedMessage{}
 	}
 	s.mu.Unlock()
 	s.onChange()
@@ -378,7 +381,7 @@ func (s *switcher) restart(change func(active string) error) error {
 	s.mu.Unlock()
 	defer func() {
 		if err := startDesktop(exe); err != nil {
-			s.setStatus("Could not start Claude: " + err.Error())
+			s.setStatus("Could not start Claude: %v", err)
 		}
 	}()
 	bk, err := backup(s.app(), s.backupsDir())
@@ -413,7 +416,7 @@ func (s *switcher) askResume(quitAt time.Time, running map[string]bool) {
 	if len(cut) == 0 {
 		return
 	}
-	keep := chooseResume(a.label(), cut, resumeWait)
+	keep := chooseResume(s.snapshot().Language, a.label(), cut, resumeWait)
 	n := 0
 	for i, c := range cut {
 		if keep[i] {
@@ -442,7 +445,7 @@ func (s *switcher) switchTo(uuid string, cause switchCause) error {
 	from := s.active
 	s.mu.Unlock()
 	if target == nil {
-		return errors.New("unknown account")
+		return message("unknown account")
 	}
 	switch cause {
 	case nearlyFull:
@@ -451,9 +454,9 @@ func (s *switcher) switchTo(uuid string, cause switchCause) error {
 		log.Printf("auto switch to %s: its weekly usage resets soon", target.label())
 	}
 	if _, err := os.Stat(filepath.Join(s.profileDir(uuid), "config.json")); err != nil && uuid != s.snapshot().Active {
-		return fmt.Errorf("no saved sign-in for %s, use Add account", target.label())
+		return message("no saved sign-in for %s, use Add account", target.label())
 	}
-	s.setStatus("Switching to " + target.label() + "…")
+	s.setStatus("Switching to %s…", target.label())
 	err := s.restart(func(active string) error {
 		if active == uuid {
 			return nil
@@ -515,7 +518,7 @@ func (s *switcher) importChats() error {
 		a := s.account(active)
 		s.mu.Unlock()
 		if a == nil {
-			return errors.New("no signed-in account")
+			return message("no signed-in account")
 		}
 		n, err := syncSessions(s.app().sessionsDir(), a.UUID, a.Org)
 		log.Printf("%d chats imported into %s", n, a.label())
@@ -559,9 +562,18 @@ func (s *switcher) setThreshold(t float64) {
 	s.onChange()
 }
 
+func (s *switcher) setLanguage(l language) {
+	s.mu.Lock()
+	s.st.Language = l.normalized()
+	s.saveState()
+	s.mu.Unlock()
+	s.onChange()
+}
+
 // snapshot is a copy of what the menu shows.
 type snapshot struct {
 	Accounts    []Account
+	Language    language
 	Active      string
 	AutoSwitch  bool
 	SpendWeekly bool
@@ -577,7 +589,7 @@ func (s *switcher) snapshot() snapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	snap := snapshot{Active: s.active, AutoSwitch: s.st.AutoSwitch, SpendWeekly: s.st.SpendWeekly, Threshold: s.st.Threshold,
-		Status: s.status, Note: s.autoNote(time.Now()), Busy: s.busy.Load()}
+		Language: s.st.Language.normalized(), Status: s.status.render(s.st.Language), Note: s.autoNote(time.Now()), Busy: s.busy.Load()}
 	if !s.st.NoUpdateCheck && newerVersion(s.st.LatestVersion, version) {
 		snap.Update = s.st.LatestVersion
 	}
@@ -593,16 +605,17 @@ func (s *switcher) autoNote(now time.Time) string {
 	if now.Sub(s.st.LastSwitch) > noteFor {
 		return ""
 	}
-	at := resetText(s.st.LastSwitch, now)
+	l := s.st.Language
+	at := l.resetText(s.st.LastSwitch, now)
 	switch s.st.LastCause {
 	case nearlyFull:
-		from := "the last account"
+		from := l.text("the last account")
 		if a := s.account(s.st.LastFrom); a != nil {
 			from = a.label()
 		}
-		return fmt.Sprintf("Auto-switched at %s, %s was nearly full", at, from)
+		return l.text("Auto-switched at %s, %s was nearly full", at, from)
 	case spendWeekly:
-		return fmt.Sprintf("Auto-switched at %s to use up this account's week before it resets %s", at, resetText(s.st.SpendUntil, now))
+		return l.text("Auto-switched at %s to use up this account's week before it resets %s", at, l.resetText(s.st.SpendUntil, now))
 	}
 	return ""
 }

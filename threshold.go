@@ -22,16 +22,18 @@ var thresholdPage string
 const thresholdFlag = "-threshold-dialog"
 
 type thresholdRequest struct {
-	Threshold float64   `json:"threshold"`
-	Presets   []float64 `json:"presets"`
-	Headroom  float64   `json:"headroom"`
+	Threshold float64           `json:"threshold"`
+	Presets   []float64         `json:"presets"`
+	Headroom  float64           `json:"headroom"`
+	Language  language          `json:"language,omitempty"`
+	Text      map[string]string `json:"text,omitempty"`
 }
 
 // chooseThreshold asks for a threshold, starting from current. It is false
 // when cancelled. Without a web view the platform's plain dialog asks
 // instead.
-func chooseThreshold(current float64) (float64, bool) {
-	req := thresholdRequest{Threshold: current, Presets: thresholds, Headroom: autoHeadroom}
+func chooseThreshold(l language, current float64) (float64, bool) {
+	req := thresholdRequest{Threshold: current, Presets: thresholds, Headroom: autoHeadroom, Language: l}
 	// Nothing counts down here, so the dialog may stay open a long while.
 	out, err := askInDialogProcess(thresholdFlag, req, 12*time.Hour)
 	if err == nil {
@@ -47,16 +49,16 @@ func chooseThreshold(current float64) (float64, bool) {
 		err = fmt.Errorf("unexpected answer %q", out)
 	}
 	log.Printf("threshold dialog: %v, using the plain one", err)
-	return askThresholdPlain(current)
+	return askThresholdPlain(l, current)
 }
 
 // askThresholdPlain asks with the platform's plain dialog, and again after
 // an answer that is not a threshold.
-func askThresholdPlain(current float64) (float64, bool) {
+func askThresholdPlain(l language, current float64) (float64, bool) {
 	prompt := "Auto-switch when the active account reaches this much of its 5-hour or weekly limit, in percent."
 	answer := fmt.Sprintf("%.0f", current)
 	for {
-		text, ok := nativeAskNumber("Auto-switch at", prompt, answer)
+		text, ok := nativeAskNumber(l, l.text("Auto-switch at"), l.text(prompt), answer)
 		if !ok {
 			return 0, false
 		}
@@ -84,12 +86,14 @@ func runThresholdDialog() int {
 		fmt.Fprintln(os.Stderr, "bad request:", err)
 		return 2
 	}
+	req.Language = req.Language.normalized()
+	req.Text = req.Language.translations()
 	page, err := fillPage(thresholdPage, req)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	answer, err := showWebDialog(dialogWindow{Title: "Auto-switch at", Width: 400, Height: 360}, page)
+	answer, err := showWebDialog(dialogWindow{Title: req.Language.text("Auto-switch at"), Width: 400, Height: 360}, page)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

@@ -17,19 +17,25 @@ const maxAccounts = 8
 var thresholds = []float64{90, 94, 96, 98}
 
 type tray struct {
-	s          *switcher
-	status     *systray.MenuItem
-	update     *systray.MenuItem
-	accounts   [maxAccounts]*systray.MenuItem
-	auto       *systray.MenuItem
-	spend      *systray.MenuItem
-	thresholds []*systray.MenuItem
-	custom     *systray.MenuItem
-	add        *systray.MenuItem
-	importNow  *systray.MenuItem
-	autostart  *systray.MenuItem
-	lastIcon   string
-	updates    chan struct{}
+	s            *switcher
+	status       *systray.MenuItem
+	update       *systray.MenuItem
+	accounts     [maxAccounts]*systray.MenuItem
+	auto         *systray.MenuItem
+	limit        *systray.MenuItem
+	spend        *systray.MenuItem
+	thresholds   []*systray.MenuItem
+	custom       *systray.MenuItem
+	add          *systray.MenuItem
+	importNow    *systray.MenuItem
+	autostart    *systray.MenuItem
+	folder       *systray.MenuItem
+	quit         *systray.MenuItem
+	langEnglish  *systray.MenuItem
+	langChinese  *systray.MenuItem
+	lastLanguage language
+	lastIcon     string
+	updates      chan struct{}
 }
 
 func (t *tray) onReady() {
@@ -39,22 +45,22 @@ func (t *tray) onReady() {
 	t.status = systray.AddMenuItem("", "")
 	t.status.Disable()
 	t.status.Hide()
-	t.update = systray.AddMenuItem("", "Download the new version and restart on it")
+	t.update = systray.AddMenuItem("", "")
 	t.update.Hide()
 	for i := range t.accounts {
-		t.accounts[i] = systray.AddMenuItemCheckbox("", "Switch the Claude app to this account", false)
+		t.accounts[i] = systray.AddMenuItemCheckbox("", "", false)
 		t.accounts[i].Hide()
 	}
 	systray.AddSeparator()
-	t.auto = systray.AddMenuItemCheckbox("Auto-switch when nearly full", "Switch to the account with the most room left", false)
-	limit := systray.AddMenuItem("Auto-switch at", "")
+	t.auto = systray.AddMenuItemCheckbox("", "", false)
+	t.limit = systray.AddMenuItem("", "")
 	for _, v := range thresholds {
-		t.thresholds = append(t.thresholds, limit.AddSubMenuItemCheckbox(fmt.Sprintf("%.0f%%", v), "", false))
+		t.thresholds = append(t.thresholds, t.limit.AddSubMenuItemCheckbox(fmt.Sprintf("%.0f%%", v), "", false))
 	}
-	t.custom = limit.AddSubMenuItemCheckbox(customLabel(defaultThreshold), "Type in your own percentage", false)
-	t.spend = systray.AddMenuItemCheckbox("Auto-switch to use up expiring weekly", "Switch to an account whose weekly limit resets within a day with half or more of it unused", false)
-	t.add = systray.AddMenuItem("Add account…", "Restart Claude on its sign-in screen, your current account is kept")
-	t.importNow = systray.AddMenuItem("Import chats from all accounts", "Restart Claude so every chat shows up in this account")
+	t.custom = t.limit.AddSubMenuItemCheckbox("", "", false)
+	t.spend = systray.AddMenuItemCheckbox("", "", false)
+	t.add = systray.AddMenuItem("", "")
+	t.importNow = systray.AddMenuItem("", "")
 	systray.AddSeparator()
 	// Rewriting an enabled entry keeps its path current and adds the Task
 	// Manager record that entries from before v0.1.2 are missing.
@@ -63,9 +69,13 @@ func (t *tray) onReady() {
 			log.Printf("refresh start at login: %v", err)
 		}
 	}
-	t.autostart = systray.AddMenuItemCheckbox("Start at login", "", autostartEnabled())
-	folder := systray.AddMenuItem("Open data folder", "")
-	quit := systray.AddMenuItem("Quit", "")
+	t.autostart = systray.AddMenuItemCheckbox("", "", autostartEnabled())
+	// 语言名称始终保留双语，切换后仍能找到语言入口。
+	languages := systray.AddMenuItem("Language / 语言", "")
+	t.langEnglish = languages.AddSubMenuItemCheckbox("English", "", false)
+	t.langChinese = languages.AddSubMenuItemCheckbox("简体中文", "", false)
+	t.folder = systray.AddMenuItem("", "")
+	t.quit = systray.AddMenuItem("", "")
 
 	for i, item := range t.accounts {
 		go func() {
@@ -103,16 +113,20 @@ func (t *tray) onReady() {
 				go t.s.run("Import", t.s.importChats)
 			case <-t.autostart.ClickedCh:
 				if err := setAutostart(!t.autostart.Checked()); err != nil {
-					t.s.setStatus("Start at login: " + err.Error())
+					t.s.setStatus("Start at login: %v", err)
 				}
 				setChecked(t.autostart, autostartEnabled())
 			case <-t.update.ClickedCh:
 				if v := t.s.snapshot().Update; v != "" {
 					go t.s.installUpdate(context.Background(), v)
 				}
-			case <-folder.ClickedCh:
+			case <-t.langEnglish.ClickedCh:
+				t.s.setLanguage(english)
+			case <-t.langChinese.ClickedCh:
+				t.s.setLanguage(chinese)
+			case <-t.folder.ClickedCh:
 				shellOpen(t.s.dir)
-			case <-quit.ClickedCh:
+			case <-t.quit.ClickedCh:
 				systray.Quit()
 			}
 		}
@@ -125,6 +139,7 @@ func (t *tray) onReady() {
 		default:
 		}
 	}
+	t.render()
 	go func() {
 		for range t.updates {
 			t.render()
@@ -162,7 +177,13 @@ func (t *tray) updateLoop() {
 
 func (t *tray) render() {
 	snap := t.s.snapshot()
+	l := snap.Language
 	now := time.Now()
+	if l != t.lastLanguage {
+		t.renderLanguage(l)
+	}
+	setChecked(t.langEnglish, l == english)
+	setChecked(t.langChinese, l == chinese)
 
 	switch {
 	case snap.Status != "":
@@ -175,25 +196,25 @@ func (t *tray) render() {
 		t.status.Hide()
 	}
 	if snap.Update != "" {
-		t.update.SetTitle("Version " + snap.Update + " is out, click to update")
+		t.update.SetTitle(l.text("Version %s is out, click to update", snap.Update))
 		t.update.Show()
 	} else {
 		t.update.Hide()
 	}
 	if len(snap.Accounts) == 0 && snap.Status == "" {
-		t.status.SetTitle("Open Claude and sign in")
+		t.status.SetTitle(l.text("Open Claude and sign in"))
 		t.status.Show()
 	}
 
 	activePct := -1.0
-	tip := "Claude Account Switcher"
+	tip := l.text("Claude Account Switcher")
 	for i, item := range t.accounts {
 		if i >= len(snap.Accounts) {
 			item.Hide()
 			continue
 		}
 		a := snap.Accounts[i]
-		detail := usageText(a, snap.Threshold, now)
+		detail := l.usageText(a, snap.Threshold, now)
 		item.SetTitle(a.label() + menuTab + detail)
 		setChecked(item, a.UUID == snap.Active)
 		if snap.Busy {
@@ -217,7 +238,7 @@ func (t *tray) render() {
 	for i, item := range t.thresholds {
 		setChecked(item, thresholds[i] == snap.Threshold)
 	}
-	t.custom.SetTitle(customLabel(snap.Threshold))
+	t.custom.SetTitle(l.customLabel(snap.Threshold))
 	setChecked(t.custom, !slices.Contains(thresholds, snap.Threshold))
 	for _, item := range []*systray.MenuItem{t.add, t.importNow} {
 		if snap.Busy {
@@ -228,9 +249,35 @@ func (t *tray) render() {
 	}
 }
 
+func (t *tray) renderLanguage(l language) {
+	for _, entry := range []struct {
+		item           *systray.MenuItem
+		title, tooltip string
+	}{
+		{t.auto, "Auto-switch when nearly full", "Switch to the account with the most room left"},
+		{t.limit, "Auto-switch at", ""},
+		{t.spend, "Auto-switch to use up expiring weekly", "Switch to an account whose weekly limit resets within a day with half or more of it unused"},
+		{t.add, "Add account…", "Restart Claude on its sign-in screen, your current account is kept"},
+		{t.importNow, "Import chats from all accounts", "Restart Claude so every chat shows up in this account"},
+		{t.autostart, "Start at login", ""},
+		{t.folder, "Open data folder", ""},
+		{t.quit, "Quit", ""},
+	} {
+		entry.item.SetTitle(l.text(entry.title))
+		entry.item.SetTooltip(l.text(entry.tooltip))
+	}
+	t.update.SetTooltip(l.text("Download the new version and restart on it"))
+	t.custom.SetTooltip(l.text("Type in your own percentage"))
+	for _, item := range t.accounts {
+		item.SetTooltip(l.text("Switch the Claude app to this account"))
+	}
+	t.lastLanguage = l
+}
+
 // askThreshold asks for a threshold of one's own.
 func (t *tray) askThreshold() {
-	if v, ok := chooseThreshold(t.s.snapshot().Threshold); ok {
+	snap := t.s.snapshot()
+	if v, ok := chooseThreshold(snap.Language, snap.Threshold); ok {
 		t.s.setThreshold(v)
 		return
 	}
@@ -240,46 +287,53 @@ func (t *tray) askThreshold() {
 
 // customLabel names the menu item for a threshold of one's own, with the
 // current one when no preset matches it.
-func customLabel(threshold float64) string {
+func (l language) customLabel(threshold float64) string {
 	if slices.Contains(thresholds, threshold) {
-		return "Custom…"
+		return l.text("Custom…")
 	}
-	return fmt.Sprintf("Custom (%.0f%%)…", threshold)
+	return l.text("Custom (%.0f%%)…", threshold)
 }
 
 // menuTab right-aligns the usage on Windows, where a tab in a menu title
 // starts a right-aligned column.
 var menuTab = map[bool]string{true: "\t", false: "    "}[runtime.GOOS == "windows"]
 
-func usageText(a Account, threshold float64, now time.Time) string {
+func (l language) usageText(a Account, threshold float64, now time.Time) string {
 	if a.Problem != "" {
-		return a.Problem
+		return l.text(a.Problem)
 	}
 	if a.Usage == nil {
-		return "usage unknown"
+		return l.text("usage unknown")
 	}
 	u := a.Usage.current(now)
-	parts := []string{fmt.Sprintf("5h %.0f%%", u.Session), fmt.Sprintf("week %.0f%%", u.Weekly)}
+	parts := []string{l.text("5h %.0f%%", u.Session), l.text("week %.0f%%", u.Weekly)}
 	switch {
 	case u.SessionReset.IsZero() || !u.SessionReset.After(now):
 	case u.Session >= threshold:
-		parts[0] += " until " + resetText(u.SessionReset, now)
+		parts[0] += l.text(" until %s", l.resetText(u.SessionReset, now))
 	default:
-		parts[0] += ", resets " + resetText(u.SessionReset, now)
+		parts[0] += l.text(", resets %s", l.resetText(u.SessionReset, now))
 	}
 	// The weekly reset is always shown: it decides how much of the week is left to use.
 	switch {
 	case u.WeeklyReset.IsZero() || !u.WeeklyReset.After(now):
 	case u.Weekly >= threshold:
-		parts[1] += " until " + resetText(u.WeeklyReset, now)
+		parts[1] += l.text(" until %s", l.resetText(u.WeeklyReset, now))
 	default:
-		parts[1] += ", resets " + resetText(u.WeeklyReset, now)
+		parts[1] += l.text(", resets %s", l.resetText(u.WeeklyReset, now))
 	}
 	return strings.Join(parts, " · ")
 }
 
-func resetText(at, now time.Time) string {
+func (l language) resetText(at, now time.Time) string {
 	at, now = at.Local(), now.Local()
+	if l == chinese && (at.YearDay() != now.YearDay() || at.Year() != now.Year()) {
+		weekday := [...]string{"周日", "周一", "周二", "周三", "周四", "周五", "周六"}[at.Weekday()]
+		if at.Sub(now) < 6*24*time.Hour {
+			return weekday + " " + at.Format("15:04")
+		}
+		return fmt.Sprintf("%d月%d日 %s %s", at.Month(), at.Day(), weekday, at.Format("15:04"))
+	}
 	switch {
 	case at.YearDay() == now.YearDay() && at.Year() == now.Year():
 		return at.Format("15:04")

@@ -26,6 +26,7 @@ Every pull request runs vet and tests on Windows and macOS.
 | --- | --- |
 | `main.go` | Start-up, flags, log |
 | `tray.go` | The tray menu |
+| `i18n.go` | Simplified Chinese translations and language-aware status messages |
 | `switcher.go` | Accounts, `state.json`, the switch itself, auto-switch |
 | `profiles.go` | Saving and restoring a sign-in, backups |
 | `sessions.go` | Copying the Claude Code chat list between accounts |

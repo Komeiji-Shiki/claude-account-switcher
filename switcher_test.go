@@ -284,10 +284,10 @@ func TestThresholdPageInsertsRequest(t *testing.T) {
 }
 
 func TestCustomLabel(t *testing.T) {
-	if got, want := customLabel(96), "Custom…"; got != want {
+	if got, want := english.customLabel(96), "Custom…"; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
-	if got, want := customLabel(85), "Custom (85%)…"; got != want {
+	if got, want := english.customLabel(85), "Custom (85%)…"; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
@@ -295,15 +295,15 @@ func TestCustomLabel(t *testing.T) {
 func TestUsageTextShowsWeeklyReset(t *testing.T) {
 	now := time.Date(2026, 10, 6, 12, 0, 0, 0, time.Local)
 	a := Account{Usage: &Usage{Session: 20, Weekly: 40, WeeklyReset: now.Add(2 * 24 * time.Hour)}}
-	if got, want := usageText(a, 96, now), "5h 20% · week 40%, resets Thu 12:00"; got != want {
+	if got, want := english.usageText(a, 96, now), "5h 20% · week 40%, resets Thu 12:00"; got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 	a.Usage.Weekly = 97
-	if got, want := usageText(a, 96, now), "5h 20% · week 97% until Thu 12:00"; got != want {
+	if got, want := english.usageText(a, 96, now), "5h 20% · week 97% until Thu 12:00"; got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 	a.Usage.Weekly, a.Usage.WeeklyReset = 0, now.Add(6*24*time.Hour+time.Hour)
-	if got, want := usageText(a, 96, now), "5h 20% · week 0%, resets Mon 12 Oct 13:00"; got != want {
+	if got, want := english.usageText(a, 96, now), "5h 20% · week 0%, resets Mon 12 Oct 13:00"; got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
@@ -324,7 +324,7 @@ func TestUsageTextShowsSessionReset(t *testing.T) {
 		{100, "5h 100% until 21:20 · week 0%"},
 	} {
 		a := Account{Usage: &Usage{Session: tc.percent, SessionReset: now.Add(2*time.Hour + 10*time.Minute)}}
-		if got := usageText(a, 98, now); got != tc.want {
+		if got := english.usageText(a, 98, now); got != tc.want {
 			t.Errorf("session %.0f: got %q, want %q", tc.percent, got, tc.want)
 		}
 	}
@@ -338,7 +338,7 @@ func TestUsageTextShowsSessionReset(t *testing.T) {
 		{"expired", now.Add(-time.Minute), "5h 0% · week 0%"},
 	} {
 		a := Account{Usage: &Usage{Session: 100, SessionReset: tc.reset}}
-		if got := usageText(a, 98, now); got != tc.want {
+		if got := english.usageText(a, 98, now); got != tc.want {
 			t.Errorf("%s reset: got %q, want %q", tc.name, got, tc.want)
 		}
 	}
@@ -361,7 +361,7 @@ func TestUsageTextResetDatesAcrossTimeZones(t *testing.T) {
 				SessionReset: time.Date(2026, 10, 26, 0, 0, 0, 0, loc),
 				WeeklyReset:  time.Date(2026, 11, 1, 4, 29, 0, 0, loc)}}
 			want := "5h 20%, resets Mon 00:00 · week 40%, resets Sun 1 Nov 04:29"
-			if got := usageText(a, 98, now); got != want {
+			if got := english.usageText(a, 98, now); got != want {
 				t.Fatalf("got %q, want %q", got, want)
 			}
 		})

@@ -142,6 +142,15 @@
 const data = /*DATA*/{"threshold":85,"presets":[90,94,96,98],"headroom":10};
 const $ = id => document.getElementById(id);
 const send = (name, arg) => (typeof window[name] === "function" ? window[name](arg) : console.log(name, arg));
+const text = (source, values = {}) => (data.text?.[source] ?? source).replace(/\{(\w+)\}/g, (_, key) => values[key]);
+
+document.documentElement.lang = data.language || "en";
+document.title = text("Auto-switch at");
+document.querySelector("h1").textContent = text("Auto-switch at");
+document.querySelector("header p").textContent = text("Claude moves to the account with the most room left once the active one reaches this much of its 5-hour or weekly limit.");
+$("num").setAttribute("aria-label", text("Threshold in percent"));
+$("slider").setAttribute("aria-label", text("Threshold"));
+$("cancel").textContent = text("Cancel");
 
 const num = $("num"), slider = $("slider");
 const chips = data.presets.map(p => {
@@ -167,18 +176,18 @@ function update() {
   $("value").classList.toggle("bad", v === null);
   $("hint").classList.toggle("bad", v === null);
   $("set").disabled = v === null;
-  $("set").textContent = v === null ? "Set" : `Set ${v}%`;
+  $("set").textContent = v === null ? text("Set") : text("Set {value}%", {value: v});
   chips.forEach((c, i) => c.classList.toggle("on", data.presets[i] === v));
   if (v === null) {
-    $("hint").textContent = "Enter a whole number from 1 to 99.";
+    $("hint").textContent = text("Enter a whole number from 1 to 99.");
     return;
   }
   slider.value = v;
   $("ring").setAttribute("stroke-dasharray", `${v} 100`);
   const room = v - data.headroom;
   $("hint").textContent = room > 0
-    ? `It only moves to an account below ${room}%, so it does not bounce between full ones.`
-    : `No account can be ${data.headroom} points below this, so it will not switch.`;
+    ? text("It only moves to an account below {room}%, so it does not bounce between full ones.", {room})
+    : text("No account can be {headroom} points below this, so it will not switch.", {headroom: data.headroom});
 }
 
 num.addEventListener("input", () => { num.value = num.value.replace(/\D/g, ""); update(); });

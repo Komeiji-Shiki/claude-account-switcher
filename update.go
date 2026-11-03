@@ -138,7 +138,7 @@ func (s *switcher) installUpdate(ctx context.Context, v string) {
 		return
 	}
 	defer updating.Store(false)
-	s.setStatus("Downloading version " + v + "…")
+	s.setStatus("Downloading version %s…", v)
 	err := func() error {
 		exe, err := os.Executable()
 		if err != nil {
@@ -161,11 +161,11 @@ func (s *switcher) installUpdate(ctx context.Context, v string) {
 		return nil
 	}()
 	if err != nil {
-		s.setStatus("Update failed: " + err.Error())
+		s.setStatus("Update failed: %v", err)
 		shellOpen(releasesURL + "/latest")
 		return
 	}
-	s.setStatus("Starting version " + v + "…")
+	s.setStatus("Starting version %s…", v)
 }
 
 // fetchRelease downloads this platform's file of version v and checks it

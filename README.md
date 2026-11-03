@@ -97,6 +97,12 @@ From then on, click an account to switch.
 > [!IMPORTANT]
 > **Never use Sign out in Claude to change accounts.** Signing out can end that sign-in on Anthropic's side, and the switcher's saved copy stops working. The account then shows "signed out, add it again". Use **Add account…** to sign it in once more.
 
+## Language / 语言
+
+Choose **Language / 语言 → 简体中文** in the tray menu to use Simplified Chinese, or choose **English** to switch back. The menu and usage information update immediately. Dialogs use the language selected when they open, and the switcher remembers your choice after a restart. English is the default.
+
+在托盘菜单中选择 **Language / 语言 → 简体中文** 即可启用中文，选择 **English** 可以切回英文。菜单、用量和状态提示会立即更新，弹窗使用打开时选择的语言，重启后仍会保留语言设置。默认语言为英文。
+
 ## Auto-switch
 
 Two toggles in the menu, both off until you turn them on:

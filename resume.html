@@ -173,15 +173,21 @@
 const data = /*DATA*/{"account":"Senior Claus (Pro)","wait":30,"chats":[{"title":"Stripe-Zahlung und Validierung","folder":"Trilluminati"},{"title":"Fix the login bug & add tests","folder":"ClaudeAccountSwitcher"}]};
 const $ = id => document.getElementById(id);
 const send = (name, arg) => (typeof window[name] === "function" ? window[name](arg) : console.log(name, arg));
+const text = (source, values = {}) => (data.text?.[source] ?? source).replace(/\{(\w+)\}/g, (_, key) => values[key]);
+
+document.documentElement.lang = data.language || "en";
+document.title = text("Continue chats?");
+document.querySelector("h1").textContent = text("Continue your chats?");
+$("skip").textContent = text("Don't continue");
 
 const lead = $("lead");
-lead.append(data.account ? "These chats were working when Claude closed to switch to " : "These chats were working when Claude closed. ");
+lead.append(text(data.account ? "These chats were working when Claude closed to switch to " : "These chats were working when Claude closed. "));
 if (data.account) {
   const b = document.createElement("b");
   b.textContent = data.account;
-  lead.append(b, ". ");
+  lead.append(b, text(". "));
 }
-lead.append("Checked chats pick up where they left off.");
+lead.append(text("Checked chats pick up where they left off."));
 
 const boxes = data.chats.map((chat, i) => {
   const row = $("row").content.firstElementChild.cloneNode(true);
@@ -199,9 +205,9 @@ const boxes = data.chats.map((chat, i) => {
 
 function update() {
   const n = boxes.filter(b => b.checked).length;
-  $("count").textContent = `${n} of ${boxes.length} selected`;
-  $("toggle").textContent = n === boxes.length ? "Select none" : "Select all";
-  $("go").textContent = n === 0 ? "Continue" : n === 1 ? "Continue 1 chat" : `Continue ${n} chats`;
+  $("count").textContent = text("{selected} of {total} selected", {selected: n, total: boxes.length});
+  $("toggle").textContent = text(n === boxes.length ? "Select none" : "Select all");
+  $("go").textContent = n === 0 ? text("Continue") : n === 1 ? text("Continue 1 chat") : text("Continue {count} chats", {count: n});
   $("go").disabled = n === 0;
 }
 
@@ -230,17 +236,17 @@ const ends = Date.now() + data.wait * 1000;
 const tick = setInterval(() => {
   const ms = Math.max(0, ends - Date.now());
   $("fill").style.width = (ms / (data.wait * 1000)) * 100 + "%";
-  $("left").textContent = `Continuing in ${Math.ceil(ms / 1000)} s`;
+  $("left").textContent = text("Continuing in {seconds} s", {seconds: Math.ceil(ms / 1000)});
   if (ms === 0) finish(boxes.map(b => b.checked));
 }, 100);
-$("left").textContent = `Continuing in ${data.wait} s`;
+$("left").textContent = text("Continuing in {seconds} s", {seconds: data.wait});
 
-// Someone choosing gets all the time they need.
+// 用户开始选择后停止倒计时，保留充足的操作时间。
 function pause() {
   if ($("timer").classList.contains("paused")) return;
   clearInterval(tick);
   $("timer").classList.add("paused");
-  $("left").textContent = "Waiting for you";
+  $("left").textContent = text("Waiting for you");
 }
 
 update();
