@@ -57,6 +57,7 @@ type State struct {
 	NoUpdateCheck bool      `json:"noUpdateCheck,omitempty"`
 	UpdateChecked time.Time `json:"updateChecked,omitempty"`
 	LatestVersion string    `json:"latestVersion,omitempty"`
+	UpdateSource  string    `json:"updateSource,omitempty"`
 }
 
 // switchCause says why a switch happened.
@@ -124,6 +125,12 @@ func newSwitcher(dir string) *switcher {
 		s.st.Threshold = defaultThreshold
 	}
 	s.st.Language = s.st.Language.normalized()
+	// 旧来源的版本缓存不能作为当前 fork 的更新提示。
+	if s.st.UpdateSource != repoURL {
+		s.st.LatestVersion = ""
+		s.st.UpdateChecked = time.Time{}
+		s.st.UpdateSource = repoURL
+	}
 	return s
 }
 
@@ -590,7 +597,7 @@ func (s *switcher) snapshot() snapshot {
 	defer s.mu.Unlock()
 	snap := snapshot{Active: s.active, AutoSwitch: s.st.AutoSwitch, SpendWeekly: s.st.SpendWeekly, Threshold: s.st.Threshold,
 		Language: s.st.Language.normalized(), Status: s.status.render(s.st.Language), Note: s.autoNote(time.Now()), Busy: s.busy.Load()}
-	if !s.st.NoUpdateCheck && newerVersion(s.st.LatestVersion, version) {
+	if !s.st.NoUpdateCheck && s.st.UpdateSource == repoURL && newerVersion(s.st.LatestVersion, version) {
 		snap.Update = s.st.LatestVersion
 	}
 	for _, a := range s.st.Accounts {

@@ -44,7 +44,14 @@ func TestCheckUpdate(t *testing.T) {
 	defer func(old string) { latestAPI = old }(latestAPI)
 	latestAPI = srv.URL
 
-	s := &switcher{dir: t.TempDir(), onChange: func() {}}
+	// 即使旧来源刚检查过，也应忽略其缓存并立即检查当前 fork。
+	s := &switcher{dir: t.TempDir(), onChange: func() {}, st: State{
+		LatestVersion: "98.0.0", UpdateChecked: time.Now(),
+		UpdateSource: "https://github.com/SnlperStripes/claude-account-switcher",
+	}}
+	if got := s.snapshot().Update; got != "" {
+		t.Fatalf("update from the previous source shown: %q", got)
+	}
 	s.checkUpdate(context.Background())
 	if got := s.snapshot().Update; got != "99.0.0" {
 		t.Fatalf("update = %q, want 99.0.0", got)

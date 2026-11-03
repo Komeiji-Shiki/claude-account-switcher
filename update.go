@@ -20,12 +20,14 @@ import (
 )
 
 const (
-	repoURL = "https://github.com/SnlperStripes/claude-account-switcher"
+	// 检查版本、下载程序和失败时打开的页面使用同一个发布仓库。
+	releaseRepository = "Komeiji-Shiki/claude-account-switcher"
+	repoURL           = "https://github.com/" + releaseRepository
 	// GitHub is asked for the latest release at most this often.
 	updateEvery = 24 * time.Hour
 )
 
-var latestAPI = "https://api.github.com/repos/SnlperStripes/claude-account-switcher/releases/latest"
+var latestAPI = "https://api.github.com/repos/" + releaseRepository + "/releases/latest"
 
 // latestRelease asks GitHub for the version of the latest release, like "0.3.0".
 // Nothing about the user or their accounts goes along.
@@ -92,7 +94,7 @@ func newerVersion(a, b string) bool {
 // the last answer is a day old. A failed check is tried again next time.
 func (s *switcher) checkUpdate(ctx context.Context) {
 	s.mu.Lock()
-	due := !s.st.NoUpdateCheck && time.Since(s.st.UpdateChecked) >= updateEvery
+	due := !s.st.NoUpdateCheck && (s.st.UpdateSource != repoURL || time.Since(s.st.UpdateChecked) >= updateEvery)
 	s.mu.Unlock()
 	if !due {
 		return
@@ -107,6 +109,7 @@ func (s *switcher) checkUpdate(ctx context.Context) {
 	}
 	s.mu.Lock()
 	s.st.UpdateChecked, s.st.LatestVersion = time.Now(), v
+	s.st.UpdateSource = repoURL
 	s.saveState()
 	s.mu.Unlock()
 	s.onChange()
